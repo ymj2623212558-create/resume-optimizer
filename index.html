@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简历优化助手 Pro - 智能简历分析工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-shadow { box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        .tab-active { border-bottom: 3px solid #667eea; color: #667eea; font-weight: 600; }
+        .highlight { background: linear-gradient(120deg, #a8edea 0%, #fed6e3 100%); padding: 2px 6px; border-radius: 4px; }
+        .score-ring { width: 120px; height: 120px; border-radius: 50%; background: conic-gradient(#667eea 0deg, #e0e0e0 0deg); display: flex; align-items: center; justify-content: center; }
+        .keyword-tag { display: inline-block; padding: 4px 12px; border-radius: 20px; margin: 4px; font-size: 14px; }
+        .keyword-match { background: #d4edda; color: #155724; }
+        .keyword-miss { background: #f8d7da; color: #721c24; }
+        .template-card { transition: all 0.3s; cursor: pointer; }
+        .template-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+        .template-selected { border: 3px solid #667eea !important; }
+        .result-card { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: all 0.3s; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4); }
+        .section-divider { border-top: 1px dashed #e0e0e0; margin: 16px 0; }
+        .memory-point { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 12px 16px; border-radius: 8px; margin: 8px 0; }
+        .star-example { background: #f8f9fa; border-left: 4px solid #667eea; padding: 12px; margin: 8px 0; }
+        .before-after { display: flex; gap: 16px; }
+        .before-card { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .after-card { background: #d4edda; border-left: 4px solid #28a745; }
+        .tab-section { display: none; }
+        .tab-section.active { display: block; }
+        .export-btn { transition: all 0.2s; }
+        .export-btn:hover { transform: scale(1.05); }
+        .realtime-preview { position: sticky; top: 20px; }
+        .preview-content { transition: all 0.3s; }
+        .salary-tag { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 8px 16px; border-radius: 20px; display: inline-block; }
+        /* 模板样式 */
+        .template-classic .resume-preview { font-family: 'SimSun', serif; }
+        .template-modern .resume-preview { font-family: 'PingFang SC', sans-serif; }
+        .template-creative .resume-preview { font-family: 'Microsoft YaHei', sans-serif; }
+        .template-minimal .resume-preview { font-family: 'Arial', sans-serif; }
+        .template-executive .resume-preview { font-family: 'Georgia', serif; }
+        /* 打印样式 */
+        @media print {
+            body { background: white; }
+            .no-print { display: none !important; }
+            .resume-preview { box-shadow: none !important; }
+        }
+
+        /* 评分组件样式 */
+        .rating-star {
+            color: #d1d5db;
+            transition: all 0.2s ease;
+        }
+        .rating-star:hover,
+        .rating-star.active {
+            color: #fbbf24;
+            transform: scale(1.15);
+        }
+        .rating-star.hovered {
+            color: #fcd34d;
+        }
+        @keyframes ratingPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+        }
+        .rating-star.pulse {
+            animation: ratingPulse 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 头部 -->
+    <header class="gradient-bg text-white py-6 px-4 shadow-lg no-print">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-3xl font-bold mb-2">📋 简历优化助手 Pro</h1>
+            <p class="text-white/80">智能分析 | 实时预览 | 多模板切换 | 一键导出</p>
+        </div>
+    </header>
+
+    <!-- 使用统计栏 -->
+    <div class="bg-white border-b shadow-sm no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-center items-center gap-6 text-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">👥</span>
+                <div>
+                    <p class="text-gray-500">累计使用</p>
+                    <p class="font-bold text-xl text-gray-800"><span id="totalUsers">--</span> 人次</p>
+                </div>
+            </div>
+            <div class="w-px h-10 bg-gray-200"></div>
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">📄</span>
+                <div>
+                    <p class="text-gray-500">今日使用</p>
+                    <p class="font-bold text-xl text-gray-800"><span id="todayUsers">--</span> 人次</p>
+                </div>
+            </div>
+            <div class="w-px h-10 bg-gray-200"></div>
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">⭐</span>
+                <div>
+                    <p class="text-gray-500">用户评分</p>
+                    <p class="font-bold text-xl text-gray-800"><span id="satisfactionRate">暂无</span></p>
+                    <p class="text-xs text-gray-400" id="ratingInfo"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <main class="max-w-7xl mx-auto p-4">
+        <!-- 使用引导 -->
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg no-print">
+            <h3 class="font-bold text-blue-700 mb-2">💡 使用提示</h3>
+            <ol class="text-blue-600 text-sm space-y-1">
+                <li>1. 在左侧填写/粘贴你的简历内容（或上传文件）</li>
+                <li>2. 粘贴目标岗位的JD描述</li>
+                <li>3. 点击"开始分析"获取优化建议</li>
+                <li>4. 实时预览右侧简历效果，选择模板并导出</li>
+            </ol>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+            <!-- 左侧：输入区 -->
+            <div class="space-y-4 no-print">
+                <!-- 简历输入 -->
+                <div class="bg-white rounded-xl card-shadow p-5">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">📄 我的简历</h2>
+                        <div class="flex gap-2">
+                            <button onclick="switchTab('input')" class="px-3 py-1 text-sm rounded-lg tab-active" id="tab-input">编辑模式</button>
+                            <button onclick="switchTab('upload')" class="px-3 py-1 text-sm rounded-lg text-gray-500" id="tab-upload">上传文件</button>
+                        </div>
+                    </div>
+
+                    <!-- 编辑模式 -->
+                    <div id="section-input" class="tab-section active">
+                        <div class="space-y-4">
+                            <!-- 基本信息 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">1</span>
+                                    基本信息
+                                </h3>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <input type="text" id="name" placeholder="姓名" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                    <input type="text" id="phone" placeholder="手机号" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                    <input type="email" id="email" placeholder="邮箱" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                    <input type="text" id="location" placeholder="所在城市" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                    <input type="text" id="linkedin" placeholder="LinkedIn（可选）" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                    <input type="text" id="portfolio" placeholder="作品集链接（可选）" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" oninput="updatePreview()">
+                                </div>
+                            </div>
+
+                            <!-- 个人简介 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">2</span>
+                                    个人简介（2-3行）
+                                </h3>
+                                <textarea id="summary" rows="2" placeholder="例：X年产品经验，擅长需求分析和用户洞察，具备电商行业经验，数据驱动型思维" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none" oninput="updatePreview()"></textarea>
+                            </div>
+
+                            <!-- 教育背景 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">3</span>
+                                    教育背景
+                                </h3>
+                                <textarea id="education" rows="2" placeholder="例：清华大学 | 计算机科学 | 硕士 | 2019-2022" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none" oninput="updatePreview()"></textarea>
+                            </div>
+
+                            <!-- 工作经历 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">4</span>
+                                    工作经历
+                                </h3>
+                                <textarea id="experience" rows="4" placeholder="请详细描述每段工作经历（公司、职位、时间、职责与成就）" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none" oninput="updatePreview()"></textarea>
+                            </div>
+
+                            <!-- 项目经验 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">5</span>
+                                    项目经验
+                                </h3>
+                                <textarea id="projects" rows="3" placeholder="请描述参与的项目（项目名称、角色、技术栈、成果）" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none" oninput="updatePreview()"></textarea>
+                            </div>
+
+                            <!-- 技能证书 -->
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">6</span>
+                                    技能证书
+                                </h3>
+                                <textarea id="skills" rows="2" placeholder="专业技能、语言能力、获得证书等" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none" oninput="updatePreview()"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 上传模式 -->
+                    <div id="section-upload" class="tab-section">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center" id="dropZone">
+                            <input type="file" id="fileInput" accept=".pdf,.doc,.docx" class="hidden" onchange="handleFileUpload(this)">
+                            <div class="text-5xl mb-4">📁</div>
+                            <p class="text-gray-600 mb-2">拖拽简历文件到此处</p>
+                            <p class="text-gray-400 text-sm mb-4">或点击选择文件</p>
+                            <button onclick="document.getElementById('fileInput').click()" class="btn-primary text-white px-6 py-2 rounded-lg">
+                                选择文件
+                            </button>
+                            <p class="text-gray-400 text-xs mt-4">支持 PDF、DOC、DOCX 格式</p>
+                        </div>
+                        <div id="filePreview" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">📄</span>
+                                    <div>
+                                        <p id="fileName" class="font-medium text-gray-800"></p>
+                                        <p id="fileStatus" class="text-sm text-gray-500"></p>
+                                    </div>
+                                </div>
+                                <button onclick="clearFile()" class="text-red-500 hover:text-red-600">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- JD输入 -->
+                <div class="bg-white rounded-xl card-shadow p-5">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <span class="text-2xl">🎯</span>
+                        目标岗位JD
+                    </h2>
+                    <textarea id="jdInput" rows="8" placeholder="粘贴目标岗位的完整JD描述...
+
+示例：
+岗位职责：
+1. 负责产品设计与需求分析
+2. 跨部门协调推进项目落地
+3. 数据分析与用户调研
+
+任职要求：
+1. 本科及以上学历
+2. 3年以上产品经验
+3. 熟练使用Axure、Figma等工具
+4. 有电商/互联网经验优先
+
+薪资范围：15k-25k" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none"></textarea>
+                    <p class="text-gray-400 text-xs mt-2">建议粘贴完整JD以获得更准确的分析</p>
+                </div>
+
+                <!-- 分析按钮 -->
+                <button onclick="analyzeResume()" class="w-full btn-primary text-white py-4 rounded-xl font-bold text-lg">
+                    🚀 开始智能分析
+                </button>
+            </div>
+
+            <!-- 右侧：分析结果 + 实时预览 -->
+            <div class="space-y-4">
+                <!-- 实时预览切换 -->
+                <div class="bg-white rounded-xl card-shadow p-5 no-print">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">👁️ 实时预览</h2>
+                        <div class="flex gap-2">
+                            <button onclick="switchView('preview')" id="view-preview" class="px-3 py-1 text-sm rounded-lg tab-active">简历预览</button>
+                            <button onclick="switchView('analysis')" id="view-analysis" class="px-3 py-1 text-sm rounded-lg text-gray-500">分析结果</button>
+                        </div>
+                    </div>
+
+                    <!-- 简历预览区 -->
+                    <div id="view-section-preview" class="tab-section active">
+                        <div id="resumePreview" class="resume-preview bg-white border-2 border-gray-200 rounded-lg p-6 min-h-[600px] shadow-lg">
+                            <!-- 预览内容将动态生成 -->
+                            <div class="text-center text-gray-400 py-20">
+                                <p class="text-4xl mb-2">📝</p>
+                                <p>开始编辑简历后，这里会实时显示预览效果</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 模板选择 -->
+                        <div class="mt-4">
+                            <h3 class="font-semibold text-gray-700 mb-2">📄 选择模板</h3>
+                            <div class="grid grid-cols-5 gap-2" id="templates">
+                                <div class="template-card border-2 border-gray-200 rounded-lg p-2 text-center template-selected" onclick="selectTemplate(this, 'classic')">
+                                    <div class="h-16 bg-gray-100 rounded mb-1 flex items-center justify-center text-xs text-gray-400">经典</div>
+                                    <p class="text-xs font-medium">经典专业</p>
+                                </div>
+                                <div class="template-card border-2 border-gray-200 rounded-lg p-2 text-center" onclick="selectTemplate(this, 'modern')">
+                                    <div class="h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded mb-1 flex items-center justify-center text-xs text-gray-400">现代</div>
+                                    <p class="text-xs font-medium">现代简约</p>
+                                </div>
+                                <div class="template-card border-2 border-gray-200 rounded-lg p-2 text-center" onclick="selectTemplate(this, 'creative')">
+                                    <div class="h-16 bg-gradient-to-br from-pink-100 to-orange-100 rounded mb-1 flex items-center justify-center text-xs text-gray-400">创意</div>
+                                    <p class="text-xs font-medium">创意活力</p>
+                                </div>
+                                <div class="template-card border-2 border-gray-200 rounded-lg p-2 text-center" onclick="selectTemplate(this, 'minimal')">
+                                    <div class="h-16 bg-white border rounded mb-1 flex items-center justify-center text-xs text-gray-400">极简</div>
+                                    <p class="text-xs font-medium">极简留白</p>
+                                </div>
+                                <div class="template-card border-2 border-gray-200 rounded-lg p-2 text-center" onclick="selectTemplate(this, 'executive')">
+                                    <div class="h-16 bg-gradient-to-br from-gray-800 to-gray-600 rounded mb-1 flex items-center justify-center text-xs text-white">高管</div>
+                                    <p class="text-xs font-medium">高管精英</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 导出按钮 -->
+                        <div class="mt-4 flex gap-2">
+                            <button onclick="exportPDF()" class="export-btn flex-1 bg-red-500 text-white py-2 rounded-lg font-medium">
+                                📕 导出PDF
+                            </button>
+                            <button onclick="exportHTML()" class="export-btn flex-1 bg-green-500 text-white py-2 rounded-lg font-medium">
+                                📗 导出HTML
+                            </button>
+                            <button onclick="printResume()" class="export-btn flex-1 bg-blue-500 text-white py-2 rounded-lg font-medium">
+                                🖨️ 打印
+                            </button>
+                        </div>
+
+                        <!-- 用户反馈与评分窗口 -->
+                        <div class="mt-6 border-t pt-4">
+                            <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                💬 优化建议反馈
+                                <span class="text-xs text-gray-400 font-normal">（帮助我们改进）</span>
+                            </h3>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <!-- 评分组件 -->
+                                <div class="mb-3 p-3 bg-white rounded-lg border">
+                                    <div class="flex items-center justify-between flex-wrap gap-2">
+                                        <span class="text-sm text-gray-700 font-medium">这次使用对你有帮助？</span>
+                                        <div class="flex items-center gap-1" id="ratingContainer">
+                                            <span class="rating-star text-2xl cursor-pointer select-none" data-value="1" onclick="setRating(1)">☆</span>
+                                            <span class="rating-star text-2xl cursor-pointer select-none" data-value="2" onclick="setRating(2)">☆</span>
+                                            <span class="rating-star text-2xl cursor-pointer select-none" data-value="3" onclick="setRating(3)">☆</span>
+                                            <span class="rating-star text-2xl cursor-pointer select-none" data-value="4" onclick="setRating(4)">☆</span>
+                                            <span class="rating-star text-2xl cursor-pointer select-none" data-value="5" onclick="setRating(5)">☆</span>
+                                        </div>
+                                        <span id="ratingText" class="text-xs text-gray-400 ml-2">请评分</span>
+                                    </div>
+                                </div>
+                                <!-- 文字反馈 -->
+                                <textarea id="feedbackInput" rows="3" placeholder="请提出你的优化建议，例如：
+- 某个功能可以改进的地方
+- 缺少的功能
+- 使用中的问题
+- 对模板的建议" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none resize-none text-sm"></textarea>
+                                <div class="flex justify-between items-center mt-2">
+                                    <div class="flex gap-2">
+                                        <button onclick="submitFeedback()" class="btn-primary text-white px-4 py-1.5 rounded-lg text-sm">
+                                            提交反馈
+                                        </button>
+                                        <button onclick="viewFeedbacks()" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-300">
+                                            查看所有反馈 (<span id="feedbackCount">0</span>)
+                                        </button>
+                                    </div>
+                                    <button onclick="exportFeedbacks()" class="text-blue-500 text-sm hover:underline">
+                                        导出数据
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 分析结果区 -->
+                    <div id="view-section-analysis" class="tab-section">
+                        <!-- 匹配度总览 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">📊 匹配度分析</h3>
+                            <div class="flex items-center gap-4">
+                                <div class="text-center">
+                                    <div class="score-ring">
+                                        <span id="scoreValue" class="text-2xl font-bold text-gray-800">--</span>
+                                    </div>
+                                    <p class="text-gray-500 text-sm mt-1">匹配得分</p>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="space-y-2">
+                                        <div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600 text-sm">关键词匹配</span>
+                                                <span id="keywordScore" class="font-semibold text-blue-600 text-sm">--%</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                                <div id="keywordBar" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600 text-sm">硬性要求</span>
+                                                <span id="hardScore" class="font-semibold text-green-600 text-sm">--%</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                                <div id="hardBar" class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600 text-sm">经历相关度</span>
+                                                <span id="expScore" class="font-semibold text-purple-600 text-sm">--%</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                                <div id="expBar" class="bg-purple-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ATS关键词 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">🔑 ATS关键词</h3>
+                            <div class="mb-3">
+                                <p class="text-xs font-semibold text-gray-600 mb-1">✅ 已匹配</p>
+                                <div id="matchedKeywords" class="min-h-[30px]">
+                                    <span class="text-gray-400 text-xs">暂无数据</span>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-gray-600 mb-1">❌ 缺失</p>
+                                <div id="missedKeywords" class="min-h-[30px]">
+                                    <span class="text-gray-400 text-xs">暂无数据</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- JD解析 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">📋 JD智能解析</h3>
+                            <div class="space-y-2">
+                                <div class="bg-red-50 p-2 rounded">
+                                    <p class="font-semibold text-red-700 text-sm mb-1">⚠️ 硬性要求</p>
+                                    <ul id="hardRequirements" class="text-xs text-red-600 space-y-1">
+                                        <li>暂无数据</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-yellow-50 p-2 rounded">
+                                    <p class="font-semibold text-yellow-700 text-sm mb-1">🌟 加分项</p>
+                                    <ul id="bonusItems" class="text-xs text-yellow-600 space-y-1">
+                                        <li>暂无数据</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-gray-100 p-2 rounded">
+                                    <p class="font-semibold text-gray-700 text-sm mb-1">💼 岗位职级</p>
+                                    <p id="jobLevel" class="text-xs text-gray-600">暂无数据</p>
+                                </div>
+                                <div class="bg-pink-50 p-2 rounded">
+                                    <p class="font-semibold text-pink-700 text-sm mb-1">💰 薪资范围</p>
+                                    <p id="salaryRange" class="text-xs text-pink-600">暂无数据</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 痛点诊断 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">🔍 痛点诊断</h3>
+                            <div id="painPoints" class="space-y-2">
+                                <p class="text-center py-4 text-gray-400 text-sm">请先填写简历和JD</p>
+                            </div>
+                        </div>
+
+                        <!-- 记忆点 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">💎 记忆点</h3>
+                            <div id="memoryPoints" class="space-y-2">
+                                <p class="text-center py-4 text-gray-400 text-sm">分析后将为你提炼亮点</p>
+                            </div>
+                        </div>
+
+                        <!-- STAR优化 -->
+                        <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-gray-800 mb-3">📝 STAR优化</h3>
+                            <div id="starOptimization" class="space-y-3">
+                                <p class="text-center py-4 text-gray-400 text-sm">提供改写前后对比</p>
+                            </div>
+                        </div>
+
+                        <!-- 优化建议 -->
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <h3 class="font-bold text-gray-800 mb-3">💡 优化建议</h3>
+                            <div id="suggestions" class="space-y-2">
+                                <p class="text-center py-4 text-gray-400 text-sm">点击分析后显示建议</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // PDF.js 配置
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let selectedTemplate = 'classic';
+        let currentView = 'preview';
+        let extractedResume = {};
+
+        // Tab切换
+        function switchTab(tab) {
+            document.querySelectorAll('#section-input, #section-upload').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById('section-' + tab).classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('tab-active');
+        }
+
+        // 视图切换
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('[id^="view-section-"]').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('[id^="view-"]').filter(b => b.id.startsWith('view-') && !b.id.startsWith('view-section-')).forEach(b => b.classList.remove('tab-active'));
+            document.getElementById('view-section-' + view).classList.add('active');
+            document.getElementById('view-' + view).classList.add('tab-active');
+        }
+
+        // 文件上传
+        function handleFileUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileStatus').textContent = '正在解析...';
+            document.getElementById('dropZone').classList.add('hidden');
+            document.getElementById('filePreview').classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    if (file.name.endsWith('.pdf')) {
+                        await parsePDF(e.target.result);
+                    }
+                    document.getElementById('fileStatus').textContent = '解析成功 ✓';
+                    document.getElementById('fileStatus').className = 'text-sm text-green-500';
+                    updatePreview();
+                } catch (error) {
+                    document.getElementById('fileStatus').textContent = '解析失败，请手动输入';
+                    document.getElementById('fileStatus').className = 'text-sm text-red-500';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // PDF解析
+        async function parsePDF(arrayBuffer) {
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+            }
+            extractResumeInfo(fullText);
+        }
+
+        // 提取简历信息
+        function extractResumeInfo(text) {
+            const lines = text.split('\n').filter(l => l.trim());
+            document.getElementById('experience').value = lines.slice(0, 5).join('\n');
+            document.getElementById('projects').value = lines.slice(5, 8).join('\n');
+            document.getElementById('skills').value = lines.slice(8, 12).join('\n');
+        }
+
+        function clearFile() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('dropZone').classList.remove('hidden');
+            document.getElementById('filePreview').classList.add('hidden');
+        }
+
+        // 模板选择
+        function selectTemplate(el, template) {
+            document.querySelectorAll('.template-card').forEach(c => c.classList.remove('template-selected'));
+            el.classList.add('template-selected');
+            selectedTemplate = template;
+            updatePreview();
+        }
+
+        // 更新预览
+        function updatePreview() {
+            const preview = document.getElementById('resumePreview');
+            const data = getResumeData();
+            
+            let html = generateResumeHTML(data, selectedTemplate);
+            preview.innerHTML = html;
+            preview.className = 'resume-preview bg-white border-2 border-gray-200 rounded-lg p-6 min-h-[600px] shadow-lg template-' + selectedTemplate;
+        }
+
+        // 获取简历数据
+        function getResumeData() {
+            return {
+                name: document.getElementById('name').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                location: document.getElementById('location').value,
+                linkedin: document.getElementById('linkedin').value,
+                portfolio: document.getElementById('portfolio').value,
+                summary: document.getElementById('summary').value,
+                education: document.getElementById('education').value,
+                experience: document.getElementById('experience').value,
+                projects: document.getElementById('projects').value,
+                skills: document.getElementById('skills').value
+            };
+        }
+
+        // 生成简历HTML
+        function generateResumeHTML(data, template) {
+            const styles = {
+                classic: {
+                    headerBg: '',
+                    nameStyle: 'font-serif text-2xl font-bold',
+                    sectionTitle: 'font-bold text-lg border-b-2 border-gray-300 pb-1 mb-2',
+                    accent: 'text-gray-800'
+                },
+                modern: {
+                    headerBg: 'bg-gradient-to-r from-blue-500 to-purple-500 text-white -mx-6 -mt-6 px-6 pt-6 pb-4',
+                    nameStyle: 'text-2xl font-bold',
+                    sectionTitle: 'font-semibold text-lg text-blue-600 mb-2',
+                    accent: 'text-blue-600'
+                },
+                creative: {
+                    headerBg: 'bg-gradient-to-r from-pink-400 to-orange-400 text-white -mx-6 -mt-6 px-6 pt-6 pb-4 rounded-t-lg',
+                    nameStyle: 'text-2xl font-bold',
+                    sectionTitle: 'font-bold text-lg text-pink-500 mb-2',
+                    accent: 'text-pink-500'
+                },
+                minimal: {
+                    headerBg: '',
+                    nameStyle: 'text-2xl font-light tracking-wider',
+                    sectionTitle: 'uppercase text-sm tracking-wider text-gray-500 mb-2',
+                    accent: 'text-gray-600'
+                },
+                executive: {
+                    headerBg: 'bg-gray-800 text-white -mx-6 -mt-6 px-6 pt-6 pb-4',
+                    nameStyle: 'text-2xl font-bold tracking-wide',
+                    sectionTitle: 'font-bold text-lg text-gray-800 border-b border-gray-800 pb-1 mb-2',
+                    accent: 'text-gray-800'
+                }
+            };
+
+            const s = styles[template] || styles.classic;
+
+            let html = `<div class="${s.headerBg}">`;
+            html += `<h1 class="${s.nameStyle} mb-1">${data.name || '姓名'}</h1>`;
+            html += `<div class="text-sm opacity-90 space-x-2">`;
+            if (data.phone) html += `<span>${data.phone}</span>`;
+            if (data.email) html += `<span>| ${data.email}</span>`;
+            if (data.location) html += `<span>| ${data.location}</span>`;
+            if (data.linkedin) html += `<span>| ${data.linkedin}</span>`;
+            html += `</div>`;
+            if (data.portfolio) html += `<div class="text-sm opacity-90 mt-1">🔗 ${data.portfolio}</div>`;
+            html += `</div>`;
+
+            // 个人简介
+            if (data.summary) {
+                html += `<div class="mt-4">`;
+                html += `<h2 class="${s.sectionTitle}">个人简介</h2>`;
+                html += `<p class="text-sm text-gray-600">${data.summary}</p>`;
+                html += `</div>`;
+            }
+
+            // 工作经历
+            if (data.experience) {
+                html += `<div class="mt-4">`;
+                html += `<h2 class="${s.sectionTitle}">工作经历</h2>`;
+                html += `<div class="text-sm text-gray-700 whitespace-pre-line">${formatExperience(data.experience)}</div>`;
+                html += `</div>`;
+            }
+
+            // 项目经验
+            if (data.projects) {
+                html += `<div class="mt-4">`;
+                html += `<h2 class="${s.sectionTitle}">项目经验</h2>`;
+                html += `<div class="text-sm text-gray-700 whitespace-pre-line">${formatExperience(data.projects)}</div>`;
+                html += `</div>`;
+            }
+
+            // 教育背景
+            if (data.education) {
+                html += `<div class="mt-4">`;
+                html += `<h2 class="${s.sectionTitle}">教育背景</h2>`;
+                html += `<div class="text-sm text-gray-700">${data.education}</div>`;
+                html += `</div>`;
+            }
+
+            // 技能
+            if (data.skills) {
+                html += `<div class="mt-4">`;
+                html += `<h2 class="${s.sectionTitle}">技能证书</h2>`;
+                html += `<div class="text-sm text-gray-700 whitespace-pre-line">${data.skills}</div>`;
+                html += `</div>`;
+            }
+
+            return html;
+        }
+
+        function formatExperience(text) {
+            return text.split('\n').map(line => {
+                line = line.trim();
+                if (!line) return '';
+                if (line.startsWith('•') || line.startsWith('-') || line.startsWith('*')) {
+                    return `<div class="ml-4">• ${line.slice(1).trim()}</div>`;
+                }
+                return `<div>${line}</div>`;
+            }).join('');
+        }
+
+        // 分析简历
+        function analyzeResume() {
+            const data = getResumeData();
+            const jd = document.getElementById('jdInput').value;
+
+            if (!data.experience && !data.projects) {
+                alert('请至少填写工作经历或项目经验');
+                return;
+            }
+
+            extractedResume = data;
+            const analysis = performAnalysis(data, jd);
+            displayAnalysis(analysis);
+            
+            // 切换到分析视图
+            switchView('analysis');
+        }
+
+        // 执行分析
+        function performAnalysis(resume, jd) {
+            const jdKeywords = extractJDKeywords(jd);
+            const resumeKeywords = extractResumeKeywords(resume);
+            
+            const matched = jdKeywords.filter(k => resumeKeywords.includes(k.keyword));
+            const missed = jdKeywords.filter(k => !resumeKeywords.some(rk => rk.keyword === k.keyword));
+            
+            const keywordScore = jdKeywords.length > 0 ? Math.round((matched.length / jdKeywords.length) * 100) : 0;
+            const hardReq = extractHardRequirements(jd);
+            const hardMatched = hardReq.filter(r => resumeKeywords.some(rk => r.toLowerCase().includes(rk.keyword.toLowerCase())));
+            const hardScore = hardReq.length > 0 ? Math.round((hardMatched.length / hardReq.length) * 100) : 0;
+            const expScore = calculateExpRelevance(resume.experience + resume.projects, jd);
+            const salary = extractSalary(jd);
+            
+            return {
+                keywordScore,
+                hardScore,
+                expScore,
+                overallScore: Math.round((keywordScore + hardScore + expScore) / 3),
+                matchedKeywords: matched,
+                missedKeywords: missed,
+                hardRequirements: hardReq,
+                bonusItems: extractBonusItems(jd),
+                jobLevel: analyzeJobLevel(jd),
+                salaryRange: salary,
+                painPoints: generatePainPoints(resume, jd, missed),
+                memoryPoints: generateMemoryPoints(resume, jd),
+                starExamples: generateSTARExamples(resume.experience),
+                suggestions: generateSuggestions(missed, resume)
+            };
+        }
+
+        // 提取薪资范围
+        function extractSalary(jd) {
+            // 匹配各种薪资格式
+            const patterns = [
+                /(\d+)[kK]\s*[-~至到]\s*(\d+)[kK]/,
+                /(\d+)万\s*[-~至到]\s*(\d+)万/,
+                /(\d+),?(\d+)?\s*[-~至到]\s*(\d+),?(\d+)?/,
+                /薪资[：:]?\s*(.+?)(?:\n|，|,|。|$)/,
+                /待遇[：:]?\s*(.+?)(?:\n|，|,|。|$)/
+            ];
+            
+            for (let pattern of patterns) {
+                const match = jd.match(pattern);
+                if (match) {
+                    if (pattern.source.includes('[kK]')) {
+                        return `${match[1]}K - ${match[2]}K`;
+                    } else if (pattern.source.includes('万')) {
+                        return `${match[1]}万 - ${match[2]}万/年`;
+                    } else if (match[0].includes('薪资') || match[0].includes('待遇')) {
+                        return match[1].trim();
+                    }
+                    return match[0];
+                }
+            }
+            
+            // 检查是否有薪资相关关键词但没有具体数字
+            if (jd.includes('薪资面议') || jd.includes('待遇从优') || jd.includes('competitive salary')) {
+                return '薪资面议';
+            }
+            
+            return 'JD中未标注薪资范围';
+        }
+
+        // 提取JD关键词
+        function extractJDKeywords(jd) {
+            const keywords = [
+                '产品经理', '需求分析', '用户调研', '数据分析', '项目管理', '跨部门协调',
+                'Axure', 'Figma', 'Sketch', 'PRD', 'BRD', 'MRD', '竞品分析', '用户画像',
+                'SQL', 'Python', 'Excel', 'PPT', '需求文档', '功能设计',
+                '团队管理', '项目协调', '产品规划', '迭代优化', '用户体验', '可用性测试',
+                '电商', '互联网', '金融', '教育', 'SaaS', 'B端', 'C端',
+                '0-1', '从0到1', 'MVP', 'PMF', '增长', '转化率', '留存', 'DAU', 'MAU',
+                '领导力', '沟通能力', '逻辑思维', '创新能力', '执行力', '抗压能力'
+            ];
+            return keywords.filter(k => jd.includes(k)).map(k => ({ keyword: k }));
+        }
+
+        // 提取简历关键词
+        function extractResumeKeywords(resume) {
+            const allText = [resume.education, resume.experience, resume.projects, resume.skills, resume.summary].join(' ');
+            const skillKeywords = [
+                'Axure', 'Figma', 'Sketch', 'PRD', 'BRD', 'SQL', 'Python', 'Excel',
+                'PPT', 'Visio', 'XMind', '墨刀', '产品经理', '需求分析', '用户调研',
+                '数据分析', '项目管理', '竞品分析', '原型设计', '需求文档'
+            ];
+            return skillKeywords.filter(k => allText.toLowerCase().includes(k.toLowerCase())).map(k => ({ keyword: k }));
+        }
+
+        // 提取硬性要求
+        function extractHardRequirements(jd) {
+            const requirements = [];
+            const lines = jd.split('\n');
+            lines.forEach(line => {
+                if (line.includes('本科') || line.includes('硕士') || line.includes('博士') || 
+                    line.includes('985') || line.includes('211') || line.includes('研究生')) {
+                    const trimmed = line.trim();
+                    if (trimmed && !requirements.includes(trimmed)) requirements.push(trimmed);
+                }
+                const yearMatch = line.match(/(\d+)\s*年.*经验|经验.*(\d+)\s*年/);
+                if (yearMatch) {
+                    const trimmed = line.trim();
+                    if (trimmed && !requirements.includes(trimmed)) requirements.push(trimmed);
+                }
+            });
+            return requirements.length ? requirements : ['根据JD内容分析'];
+        }
+
+        // 提取加分项
+        function extractBonusItems(jd) {
+            const bonus = [];
+            const lines = jd.split('\n');
+            lines.forEach(line => {
+                if (line.includes('优先') || line.includes('加分') || line.includes('best') || line.includes('plus')) {
+                    const trimmed = line.trim();
+                    if (trimmed) bonus.push(trimmed);
+                }
+            });
+            return bonus.length ? bonus : ['具有相关行业经验', '有成功项目案例'];
+        }
+
+        // 分析岗位职级
+        function analyzeJobLevel(jd) {
+            if (jd.includes('高级') || jd.includes('Senior') || jd.includes('专家') || jd.includes('Staff')) return '高级/专家级';
+            if (jd.includes('中级') || jd.includes('3-5年') || jd.includes('5年')) return '中级';
+            if (jd.includes('初级') || jd.includes('1-3年') || jd.includes('应届') || jd.includes('实习') || jd.includes('Junior')) return '初级/校招';
+            if (jd.includes('总监') || jd.includes('Director') || jd.includes('VP')) return '总监/高管级';
+            return '根据具体要求判断';
+        }
+
+        // 计算经历相关度
+        function calculateExpRelevance(experience, jd) {
+            if (!experience || !jd) return 0;
+            const expWords = experience.toLowerCase();
+            const jdWords = jd.toLowerCase();
+            const keywords = ['产品', '需求', '项目', '用户', '数据', '分析', '设计', '开发', '管理', '优化'];
+            let matchCount = 0;
+            keywords.forEach(k => {
+                if (expWords.includes(k) && jdWords.includes(k)) matchCount++;
+            });
+            return Math.round((matchCount / keywords.length) * 100);
+        }
+
+        // 生成痛点
+        function generatePainPoints(resume, jd, missed) {
+            const painPoints = [];
+            const exp = resume.experience || '';
+            
+            if (missed.length > 3) {
+                painPoints.push({
+                    type: 'warning',
+                    title: '关键词缺失',
+                    desc: `简历中缺少 ${missed.length} 个JD要求的重要关键词`
+                });
+            }
+            
+            if (!exp.match(/\d+%|\d+倍|\d+万|\d+人|\$\d+/)) {
+                painPoints.push({
+                    type: 'info',
+                    title: '量化数据不足',
+                    desc: '工作经历中缺少具体的数据和成果描述'
+                });
+            }
+            
+            if (!exp.includes('【') && !exp.includes('STAR')) {
+                painPoints.push({
+                    type: 'info',
+                    title: 'STAR法则缺失',
+                    desc: '建议使用Situation-Task-Action-Result结构'
+                });
+            }
+            
+            if (painPoints.length === 0) {
+                painPoints.push({
+                    type: 'success',
+                    title: '简历质量良好',
+                    desc: '未发现明显痛点'
+                });
+            }
+            
+            return painPoints;
+        }
+
+        // 生成记忆点
+        function generateMemoryPoints(resume, jd) {
+            const points = [];
+            const exp = resume.experience || '';
+            const projects = resume.projects || '';
+            
+            const numbers = exp.match(/\d+%|\d+倍|\d+万|\d+万\+|\$\d+|\d+k\+/gi);
+            if (numbers) {
+                points.push(`📈 量化成果：${numbers.slice(0, 3).join(', ')}`);
+            }
+            
+            if (projects.includes('0-1') || projects.includes('从0到1')) {
+                points.push('🚀 0-1产品建设经验');
+            }
+            
+            if (exp.includes('管理') || exp.includes('带领')) {
+                points.push('👥 团队管理经验');
+            }
+            
+            const industries = ['电商', '金融', '教育', '医疗', 'SaaS', 'B端', 'C端'];
+            industries.forEach(ind => {
+                if (jd.includes(ind) && (exp.includes(ind) || projects.includes(ind))) {
+                    points.push(`🏭 ${ind}行业经验`);
+                }
+            });
+            
+            if (points.length === 0) {
+                points.push('💡 建议提炼工作中的亮点数据');
+            }
+            
+            return points;
+        }
+
+        // 生成STAR示例
+        function generateSTARExamples(experience) {
+            const examples = [];
+            const lines = (experience || '').split('\n').filter(l => l.trim().length > 20);
+            
+            lines.forEach((line, idx) => {
+                if (idx < 2) {
+                    examples.push({
+                        before: line.trim(),
+                        after: generateSTARContent(line.trim(), idx)
+                    });
+                }
+            });
+            
+            if (examples.length === 0) {
+                examples.push({
+                    before: '负责产品需求分析和项目管理',
+                    after: '【S】公司电商业务面临转化率低的痛点\n【T】作为产品经理，负责提升购买转化率\n【A】通过用户调研和数据埋点，识别3个关键流失点；设计并推动A/B测试方案\n【R】优化后转化率提升35%，单月GMV增加200万'
+                });
+            }
+            
+            return examples;
+        }
+
+        function generateSTARContent(text, idx) {
+            const templates = [
+                '【S】在XX公司担任产品经理期间，面临XX挑战\n【T】负责XX产品的需求分析和迭代\n【A】通过XX方式，完成XX功能设计和落地\n【R】上线后XX指标提升XX%，带来XX收益',
+                '【S】参与XX项目的全流程管理\n【T】在XX时间内完成XX目标\n【A】协调XX团队，完成XX方案设计并推动实施\n【R】最终实现XX，数据指标提升XX%'
+            ];
+            return templates[idx % templates.length];
+        }
+
+        // 生成优化建议
+        function generateSuggestions(missed, resume) {
+            const suggestions = [];
+            
+            missed.slice(0, 5).forEach(m => {
+                suggestions.push({
+                    module: '关键词补充',
+                    content: `建议添加"${m.keyword}"相关描述`
+                });
+            });
+            
+            if (!resume.skills || resume.skills.length < 50) {
+                suggestions.push({
+                    module: '技能清单完善',
+                    content: '扩充技能清单，列出熟练使用的工具和掌握程度'
+                });
+            }
+            
+            suggestions.push({
+                module: '简历格式',
+                content: '建议控制在1-2页，重点突出最近2段工作经历'
+            });
+            
+            return suggestions.slice(0, 5);
+        }
+
+        // 显示分析结果
+        function displayAnalysis(analysis) {
+            document.getElementById('scoreValue').textContent = analysis.overallScore + '%';
+            document.getElementById('keywordScore').textContent = analysis.keywordScore + '%';
+            document.getElementById('hardScore').textContent = analysis.hardScore + '%';
+            document.getElementById('expScore').textContent = analysis.expScore + '%';
+            document.getElementById('keywordBar').style.width = analysis.keywordScore + '%';
+            document.getElementById('hardBar').style.width = analysis.hardScore + '%';
+            document.getElementById('expBar').style.width = analysis.expScore + '%';
+
+            document.getElementById('matchedKeywords').innerHTML = analysis.matchedKeywords.length > 0
+                ? analysis.matchedKeywords.map(k => `<span class="keyword-tag keyword-match text-xs">${k.keyword}</span>`).join('')
+                : '<span class="text-gray-400 text-xs">未匹配到关键词</span>';
+
+            document.getElementById('missedKeywords').innerHTML = analysis.missedKeywords.length > 0
+                ? analysis.missedKeywords.map(k => `<span class="keyword-tag keyword-miss text-xs">${k.keyword}</span>`).join('')
+                : '<span class="text-green-500 text-xs">✓ 所有关键技能已覆盖</span>';
+
+            document.getElementById('hardRequirements').innerHTML = analysis.hardRequirements.map(r => `<li>${r}</li>`).join('');
+            document.getElementById('bonusItems').innerHTML = analysis.bonusItems.map(b => `<li>${b}</li>`).join('');
+            document.getElementById('jobLevel').textContent = analysis.jobLevel;
+            document.getElementById('salaryRange').innerHTML = analysis.salaryRange !== 'JD中未标注薪资范围' 
+                ? `<span class="salary-tag text-sm">${analysis.salaryRange}</span>` 
+                : '<span class="text-gray-400">JD中未标注薪资范围</span>';
+
+            document.getElementById('painPoints').innerHTML = analysis.painPoints.map(p => `
+                <div class="p-2 rounded ${p.type === 'warning' ? 'bg-yellow-50 border-l-2 border-yellow-500' : p.type === 'info' ? 'bg-blue-50 border-l-2 border-blue-500' : 'bg-green-50 border-l-2 border-green-500'}">
+                    <p class="font-semibold text-sm ${p.type === 'warning' ? 'text-yellow-700' : p.type === 'info' ? 'text-blue-700' : 'text-green-700'}">${p.title}</p>
+                    <p class="text-xs ${p.type === 'warning' ? 'text-yellow-600' : p.type === 'info' ? 'text-blue-600' : 'text-green-600'}">${p.desc}</p>
+                </div>
+            `).join('');
+
+            document.getElementById('memoryPoints').innerHTML = analysis.memoryPoints.map(p => `
+                <div class="memory-point text-sm">${p}</div>
+            `).join('');
+
+            document.getElementById('starOptimization').innerHTML = analysis.starExamples.map(ex => `
+                <div class="before-after">
+                    <div class="flex-1 before-card p-2 rounded text-xs">
+                        <p class="font-semibold text-yellow-700 mb-1">改写前</p>
+                        <p class="text-gray-700">${ex.before}</p>
+                    </div>
+                    <div class="flex-1 after-card p-2 rounded text-xs">
+                        <p class="font-semibold text-green-700 mb-1">改写后</p>
+                        <p class="text-gray-700 whitespace-pre-wrap">${ex.after}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('suggestions').innerHTML = analysis.suggestions.map(s => `
+                <div class="bg-white p-2 rounded border-l-2 border-blue-500">
+                    <p class="font-semibold text-blue-600 text-sm">📌 ${s.module}</p>
+                    <p class="text-xs text-gray-600">${s.content}</p>
+                </div>
+            `).join('');
+        }
+
+        // 导出PDF
+        function exportPDF() {
+            const element = document.getElementById('resumePreview');
+            const opt = {
+                margin: 10,
+                filename: '简历_' + (document.getElementById('name').value || '我的简历') + '.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                alert('PDF导出成功！');
+            }).catch(err => {
+                alert('PDF导出失败，请尝试打印功能');
+                console.error(err);
+            });
+        }
+
+        // 导出HTML
+        function exportHTML() {
+            const data = getResumeData();
+            const htmlContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>简历 - ${data.name || '我的简历'}</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <style>
+        @media print { body { margin: 0; } }
+    </style>
+</head>
+<body class="bg-white p-8">
+    <div class="max-w-3xl mx-auto">
+        ${generateResumeHTML(data, selectedTemplate)}
+    </div>
+</body>
+</html>`;
+            
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '简历_' + (data.name || '我的简历') + '.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 打印
+        function printResume() {
+            const data = getResumeData();
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>简历 - ${data.name || '我的简历'}</title>
+                    <script src="https://cdn.tailwindcss.com"><\/script>
+                    <style>@media print { body { margin: 0; } .no-print { display: none; } }</style>
+                </head>
+                <body class="p-8">
+                    <div class="max-w-3xl mx-auto">
+                        ${generateResumeHTML(data, selectedTemplate)}
+                    </div>
+                    <script>window.onload = function() { window.print(); }<\/script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+
+        // 拖拽上传
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) {
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-blue-500', 'bg-blue-50');
+            });
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    document.getElementById('fileInput').files = files;
+                    handleFileUpload(document.getElementById('fileInput'));
+                }
+            });
+        }
+
+        // 初始化预览
+        updatePreview();
+        
+        // 初始化反馈计数
+        updateFeedbackCount();
+        
+        // 初始化使用统计
+        initUsageStats();
+        
+        // 分析简历时记录使用
+        const originalAnalyze = analyzeResume;
+        analyzeResume = function() {
+            originalAnalyze();
+            recordUsage();
+        };
+
+        // ========== Supabase 初始化 ==========
+        const SUPABASE_URL = 'https://zakuplxzjvqfllugrpxx.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_SblzEGiMzRiGkAKomWAPMg_G-6kExbZ';
+        let supabaseClient = null;
+        let useSupabase = false;
+
+        // 初始化Supabase客户端
+        (function initSupabase() {
+            try {
+                if (typeof supabase !== 'undefined' && supabase.createClient) {
+                    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    useSupabase = true;
+                    console.log('✅ Supabase 连接成功');
+                }
+            } catch (e) {
+                console.warn('⚠️ Supabase 初始化失败，使用本地存储:', e.message);
+                useSupabase = false;
+            }
+        })();
+
+        // 生成会话ID
+        function getSessionId() {
+            let sid = sessionStorage.getItem('session_id');
+            if (!sid) {
+                sid = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                sessionStorage.setItem('session_id', sid);
+            }
+            return sid;
+        }
+
+        // ========== 反馈功能 ==========
+        
+        // 当前评分（全局变量）
+        let currentRating = 0;
+        const ratingTexts = ['请评分', '很差', '一般', '还行', '不错', '非常有帮助'];
+        
+        // 设置评分
+        function setRating(value) {
+            currentRating = value;
+            const stars = document.querySelectorAll('.rating-star');
+            stars.forEach((star, idx) => {
+                if (idx < value) {
+                    star.textContent = '★';
+                    star.classList.add('active');
+                    star.classList.add('pulse');
+                } else {
+                    star.textContent = '☆';
+                    star.classList.remove('active');
+                }
+                setTimeout(() => star.classList.remove('pulse'), 300);
+            });
+            
+            // 更新文字
+            document.getElementById('ratingText').textContent = ratingTexts[value];
+            document.getElementById('ratingText').style.color = value >= 4 ? '#10b981' : value >= 3 ? '#f59e0b' : '#ef4444';
+        }
+        
+        // 鼠标悬停预览
+        document.addEventListener('DOMContentLoaded', function() {
+            const stars = document.querySelectorAll('.rating-star');
+            stars.forEach(star => {
+                star.addEventListener('mouseenter', function() {
+                    const val = parseInt(this.dataset.value);
+                    stars.forEach((s, idx) => {
+                        if (idx < val) s.classList.add('hovered');
+                        else s.classList.remove('hovered');
+                    });
+                });
+                star.addEventListener('mouseleave', function() {
+                    stars.forEach(s => s.classList.remove('hovered'));
+                });
+            });
+        });
+        
+        // 提交反馈（含评分）
+        async function submitFeedback() {
+            const input = document.getElementById('feedbackInput');
+            const feedback = input.value.trim();
+            
+            // 至少需要评分或文字反馈之一
+            if (!feedback && currentRating === 0) {
+                alert('请至少给个评分，或写下你的建议~');
+                return;
+            }
+            
+            const feedbackData = {
+                content: feedback || null,
+                rating: currentRating > 0 ? currentRating : null,
+                template_name: selectedTemplate,
+                user_agent: navigator.userAgent.substring(0, 200)
+            };
+            
+            // 保存到Supabase
+            if (useSupabase && supabaseClient) {
+                try {
+                    const { error } = await supabaseClient.from('feedbacks').insert(feedbackData);
+                    if (error) {
+                        console.warn('Supabase写入失败:', error.message);
+                    } else {
+                        console.log('✅ 反馈已同步到云端数据库');
+                    }
+                } catch (e) {
+                    console.warn('Supabase异常:', e.message);
+                }
+            }
+            
+            // 同时保存到本地（作为缓存）
+            let feedbacks = JSON.parse(localStorage.getItem('resumeFeedbacks') || '[]');
+            feedbacks.push({
+                id: Date.now(),
+                content: feedback || '（未填写文字）',
+                rating: currentRating,
+                time: new Date().toLocaleString('zh-CN'),
+                template: selectedTemplate,
+                version: '1.0'
+            });
+            localStorage.setItem('resumeFeedbacks', JSON.stringify(feedbacks));
+            
+            // 更新统计
+            updateRatingStats();
+            
+            // 清空输入框和评分
+            input.value = '';
+            resetRating();
+            
+            // 更新计数
+            updateFeedbackCount();
+            
+            // 提示成功
+            const syncInfo = useSupabase ? '（已同步云端）' : '';
+            if (feedback && currentRating > 0) {
+                alert('✅ 反馈已提交！评分：' + '⭐'.repeat(currentRating) + syncInfo);
+            } else if (currentRating > 0) {
+                alert('✅ 评分已提交：' + '⭐'.repeat(currentRating) + syncInfo);
+            } else {
+                alert('✅ 建议已提交！感谢你的反馈！' + syncInfo);
+            }
+        }
+        
+        // 重置评分
+        function resetRating() {
+            currentRating = 0;
+            document.querySelectorAll('.rating-star').forEach(star => {
+                star.textContent = '☆';
+                star.classList.remove('active');
+            });
+            document.getElementById('ratingText').textContent = '请评分';
+            document.getElementById('ratingText').style.color = '#9ca3af';
+        }
+        
+        // 更新评分统计（从Supabase获取）
+        async function updateRatingStats() {
+            if (useSupabase && supabaseClient) {
+                try {
+                    const { data: ratingData, error } = await supabaseClient.rpc('get_avg_rating');
+                    if (!error && ratingData && ratingData.length > 0) {
+                        const avgRating = ratingData[0].avg_score;
+                        const ratingCount = ratingData[0].total_rated;
+                        
+                        // 更新显示
+                        if (avgRating && ratingCount > 0) {
+                            document.getElementById('satisfactionRate').textContent = avgRating + ' 分';
+                            document.getElementById('ratingInfo').textContent = '(' + ratingCount + '人评分)';
+                        }
+                        
+                        // 同时保存到localStorage
+                        localStorage.setItem('avgRating', avgRating.toFixed(1));
+                        localStorage.setItem('ratingCount', ratingCount);
+                    }
+                } catch (e) {
+                    console.warn('获取评分统计失败:', e.message);
+                }
+            }
+        }
+        
+        // 查看所有反馈
+        function viewFeedbacks() {
+            const feedbacks = JSON.parse(localStorage.getItem('resumeFeedbacks') || '[]');
+            
+            if (feedbacks.length === 0) {
+                alert('暂无反馈数据');
+                return;
+            }
+            
+            // 统计评分
+            const ratedFeedbacks = feedbacks.filter(f => f.rating && f.rating > 0);
+            let statsHtml = '';
+            if (ratedFeedbacks.length > 0) {
+                const avgRating = ratedFeedbacks.reduce((sum, f) => sum + f.rating, 0) / ratedFeedbacks.length;
+                const fiveStar = ratedFeedbacks.filter(f => f.rating === 5).length;
+                const fourStar = ratedFeedbacks.filter(f => f.rating === 4).length;
+                statsHtml = '<div style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px;border-radius:8px;margin-bottom:12px;text-align:center">';
+                statsHtml += '<div style="font-size:24px;margin-bottom:4px">' + '⭐'.repeat(Math.round(avgRating)) + '</div>';
+                statsHtml += '<div style="font-size:14px">平均评分 ' + avgRating.toFixed(1) + ' / 5.0（' + ratedFeedbacks.length + '人评分）</div>';
+                statsHtml += '<div style="font-size:11px;margin-top:4px;opacity:0.8">5星 ' + fiveStar + '人 | 4星 ' + fourStar + '人</div>';
+                statsHtml += '</div>';
+            }
+            
+            let html = '<h3 style="font-weight:bold;margin-bottom:12px">📋 已收集的反馈 (' + feedbacks.length + '条)</h3>';
+            html += statsHtml;
+            html += '<div style="max-height:350px;overflow-y:auto">';
+            
+            feedbacks.slice().reverse().forEach((fb, idx) => {
+                const ratingStars = fb.rating ? '⭐'.repeat(fb.rating) : '未评分';
+                const ratingColor = fb.rating >= 4 ? '#10b981' : fb.rating >= 3 ? '#f59e0b' : '#ef4444';
+                html += '<div style="background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:8px;border-left:4px solid #667eea">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+                html += '<span style="font-weight:bold;color:#667eea">反馈 #' + (feedbacks.length - idx) + '</span>';
+                html += '<span style="color:' + ratingColor + ';font-size:12px">' + ratingStars + '</span>';
+                html += '</div>';
+                html += '<div style="color:#333;white-space:pre-wrap;font-size:13px">' + escapeHtml(fb.content) + '</div>';
+                html += '<div style="margin-top:6px;display:flex;justify-content:space-between;font-size:11px;color:#999">';
+                html += '<span>模板: ' + fb.template + '</span>';
+                html += '<span>' + fb.time + '</span>';
+                html += '</div>';
+                html += '</div>';
+            });
+            
+            html += '</div>';
+            
+            // 创建模态框显示
+            showModal(html);
+        }
+        
+        // 导出反馈数据
+        function exportFeedbacks() {
+            const feedbacks = JSON.parse(localStorage.getItem('resumeFeedbacks') || '[]');
+            
+            if (feedbacks.length === 0) {
+                alert('暂无反馈数据可导出');
+                return;
+            }
+            
+            const data = {
+                exportTime: new Date().toISOString(),
+                totalFeedbacks: feedbacks.length,
+                feedbacks: feedbacks
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '简历工具_反馈数据_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 更新反馈计数
+        function updateFeedbackCount() {
+            const feedbacks = JSON.parse(localStorage.getItem('resumeFeedbacks') || '[]');
+            document.getElementById('feedbackCount').textContent = feedbacks.length;
+        }
+        
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 显示模态框
+        function showModal(content) {
+            // 移除已存在的模态框
+            const existing = document.getElementById('feedbackModal');
+            if (existing) existing.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'feedbackModal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+            modal.innerHTML = `
+                <div style="background:white;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">
+                    ${content}
+                    <button onclick="document.getElementById('feedbackModal').remove()" style="margin-top:16px;width:100%;padding:10px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer">关闭</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // ========== 使用统计功能 ==========
+        
+        // 初始化使用统计
+        async function initUsageStats() {
+            // 优先从Supabase获取真实数据
+            if (useSupabase && supabaseClient) {
+                try {
+                    // 获取总使用次数
+                    const { data: totalData, error: totalErr } = await supabaseClient.rpc('get_total_usage');
+                    const total = totalErr ? 0 : (totalData || 0);
+                    
+                    // 获取今日使用次数
+                    const { data: todayData, error: todayErr } = await supabaseClient.rpc('get_today_usage');
+                    const today = todayErr ? 0 : (todayData || 0);
+                    
+                    // 获取平均评分
+                    const { data: ratingData, error: ratingErr } = await supabaseClient.rpc('get_avg_rating');
+                    const avgRating = (!ratingErr && ratingData && ratingData.length > 0) ? ratingData[0].avg_score : null;
+                    const ratingCount = (!ratingErr && ratingData && ratingData.length > 0) ? ratingData[0].total_rated : 0;
+                    
+                    // 显示数据
+                    if (total > 0) {
+                        document.getElementById('totalUsers').textContent = total.toLocaleString();
+                        animateNumber('totalUsers', total);
+                    } else {
+                        document.getElementById('totalUsers').textContent = '0';
+                    }
+                    
+                    if (today > 0) {
+                        document.getElementById('todayUsers').textContent = today.toLocaleString();
+                        animateNumber('todayUsers', today);
+                    } else {
+                        document.getElementById('todayUsers').textContent = '0';
+                    }
+                    
+                    // 显示评分
+                    if (avgRating && ratingCount > 0) {
+                        document.getElementById('satisfactionRate').textContent = avgRating + ' 分';
+                        document.getElementById('ratingInfo').textContent = '(' + ratingCount + '人评分)';
+                    } else {
+                        document.getElementById('satisfactionRate').textContent = '暂无';
+                        document.getElementById('ratingInfo').textContent = '等待评价';
+                    }
+                    
+                    console.log('✅ 从云端加载统计:', { total, today, avgRating, ratingCount });
+                    return;
+                } catch (e) {
+                    console.warn('从Supabase加载统计失败:', e.message);
+                }
+            }
+            
+            // 降级：使用本地数据
+            const stats = getUsageStats();
+            document.getElementById('totalUsers').textContent = stats.total.toLocaleString();
+            document.getElementById('todayUsers').textContent = stats.today.toLocaleString();
+            
+            if (stats.avgRating && stats.avgRating !== '暂无') {
+                document.getElementById('satisfactionRate').textContent = stats.avgRating + ' 分';
+                document.getElementById('ratingInfo').textContent = '(' + stats.ratingCount + '人评分)';
+            } else {
+                document.getElementById('satisfactionRate').textContent = '暂无';
+                document.getElementById('ratingInfo').textContent = '等待评价';
+            }
+            
+            animateNumber('totalUsers', stats.total);
+            animateNumber('todayUsers', stats.today);
+        }
+        
+        // 获取使用统计（本地降级方案）
+        function getUsageStats() {
+            const totalUsage = parseInt(localStorage.getItem('totalUsage') || '0');
+            const todayKey = getTodayKey();
+            const todayUsage = parseInt(localStorage.getItem('todayUsage_' + todayKey) || '0');
+            const feedbacks = JSON.parse(localStorage.getItem('resumeFeedbacks') || '[]');
+            
+            const ratedFeedbacks = feedbacks.filter(f => f.rating && f.rating > 0);
+            let ratingDisplay = '暂无';
+            if (ratedFeedbacks.length > 0) {
+                const avgRating = ratedFeedbacks.reduce((sum, f) => sum + f.rating, 0) / ratedFeedbacks.length;
+                ratingDisplay = avgRating.toFixed(1);
+            }
+            
+            return {
+                total: totalUsage,
+                today: todayUsage,
+                avgRating: ratingDisplay,
+                ratingCount: ratedFeedbacks.length
+            };
+        }
+        
+        // 记录一次使用
+        async function recordUsage() {
+            const sessionId = getSessionId();
+            
+            // 写入Supabase
+            if (useSupabase && supabaseClient) {
+                try {
+                    await supabaseClient.from('usage_stats').insert({
+                        session_id: sessionId,
+                        template_name: selectedTemplate,
+                        action_type: 'analyze'
+                    });
+                    console.log('✅ 使用记录已同步云端');
+                } catch (e) {
+                    console.warn('Supabase写入失败:', e.message);
+                }
+            }
+            
+            // 同时更新本地计数
+            const total = parseInt(localStorage.getItem('totalUsage') || '0') + 1;
+            localStorage.setItem('totalUsage', total.toString());
+            
+            const todayKey = getTodayKey();
+            const today = parseInt(localStorage.getItem('todayUsage_' + todayKey) || '0') + 1;
+            localStorage.setItem('todayUsage_' + todayKey, today.toString());
+            
+            document.getElementById('totalUsers').textContent = total.toLocaleString();
+            document.getElementById('todayUsers').textContent = today.toLocaleString();
+        }
+        
+        // 获取今日日期key
+        function getTodayKey() {
+            const now = new Date();
+            return now.getFullYear() + '-' + 
+                   String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(now.getDate()).padStart(2, '0');
+        }
+        
+        // 数字滚动动画
+        function animateNumber(elementId, target) {
+            const el = document.getElementById(elementId);
+            const duration = 1200;
+            const steps = 40;
+            const increment = target / steps;
+            let step = 0;
+            
+            const timer = setInterval(() => {
+                step++;
+                const current = Math.min(Math.round(increment * step), target);
+                el.textContent = current.toLocaleString();
+                if (step >= steps) {
+                    clearInterval(timer);
+                    el.textContent = target.toLocaleString();
+                }
+            }, duration / steps);
+        }
+    </script>
+</body>
+</html>
